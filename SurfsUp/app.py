@@ -6,18 +6,10 @@ import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func
-
+import datetime as dt
 from flask import Flask, jsonify
+from statistics import mean
 
-
-# create engine 
-# automap base to import
-
-# # app=flask()
-# session = sessign _engine 
-# session query 
-
-# return jsonify varaible
 
 #################################################
 # Database Setup
@@ -34,7 +26,7 @@ Base.prepare(autoload_with=engine)
 # Save references to each table
 station = Base.classes.station
 measurement = Base.classes.measurement
-
+print(station)
 # Create our session (link) from Python to the DB
 session = Session(engine)
 
@@ -70,19 +62,17 @@ def precipitation():
     start_object = dt.datetime.strptime(start_date.date, "%Y-%m-%d")
     end_object = start_object - dt.timedelta(days=365)
 
-    final_results = session.query(measurement.station, measurement.date, measurement.prcp, measurement.tobs).\
-        filter(measurement.date > end_object)
+    final_results = session.query(measurement.date, measurement.prcp).\
+        filter(measurement.date > end_object).all()
 
     session.close()
 
     all_results = []
-    for station, date, prcp in final_results:
+    for date, prcp in final_results:
         results_dict = {}
-        results_dict["station"] = station
         results_dict["date"] = date
         results_dict["prcp"] = prcp
         all_results.append(results_dict)
-
     return jsonify(all_results)
 
 
@@ -95,9 +85,9 @@ def stations():
     session.close()
 
     station_list = []
-    for station in station_results
-        if station not in station_list:
-        station_list.append(station)
+    for i in station_results:
+        station_list.append(i[0])
+    return jsonify(station_list)
         
 @app.route("/api/v1.0/tobs")
 def tobs():
@@ -109,20 +99,51 @@ def tobs():
     start_object = dt.datetime.strptime(start_date.date, "%Y-%m-%d")
     end_object = start_object - dt.timedelta(days=365)
 
-    final_results = session.query(measurement.station, measurement.date, measurement.prcp, measurement.tobs).\
-        filter(measurement.date > end_object)
+    station = session.query(measurement.station, func.count().label('station_count')).group_by(measurement.station).order_by(func.count().desc()).first()
+
+    final_results = session.query(measurement.date, measurement.tobs).\
+        filter(measurement.date > end_object).filter(measurement.station == station[0])
 
     session.close()
 
     tobs_results = []
-    for station, date, tobs in final_results:
+    for date, tobs in final_results:
         results_dict = {}
-        results_dict["station"] = station
         results_dict["date"] = date
         results_dict['tobs'] = tobs
         tobs_results.append(results_dict)
 
     return jsonify(tobs_results)
+
+@app.route("/api/v1.0/<start>")
+def temp_start(start):
+    session = Session(engine)
+
+    start_filter = session.query(measurement.tobs).filter(measurement.date>= start).all()
+    start_filter_results = [result[0] for result in start_filter]
+    
+    min_temp = min(start_filter_results)
+    max_temp = max(start_filter_results)
+    avg_temp = mean(start_filter_results)
+    avg_temp = round(avg_temp, 1)
+    
+    start_final = [{"Min": min_temp, "Max": max_temp, "Mean": avg_temp}]
+    return jsonify(start_final)
+
+@app.route("/api/v1.0/<start>/<end>")
+def temp_end(start, end):
+    session = Session(engine)
+
+    start_filter = session.query(measurement.tobs).filter(measurement.date>= start).filter(measurement.date<= end).all()
+    start_filter_results = [result[0] for result in start_filter]
+    
+    min_temp = min(start_filter_results)
+    max_temp = max(start_filter_results)
+    avg_temp = mean(start_filter_results)
+    avg_temp = round(avg_temp, 1)
+
+    start_final = [{"Min": min_temp, "Max": max_temp, "Mean": avg_temp}]
+    return jsonify(start_final)
 
 if __name__ == '__main__':
     app.run(debug=True)
